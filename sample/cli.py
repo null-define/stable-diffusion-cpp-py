@@ -1,4 +1,4 @@
-from stable_diffusion_cpp.stable_diffusion_cpp import StableDiffusion
+from stable_diffusion_cpp import StableDiffusion
 from PIL import Image
 import numpy as np
 import argparse
