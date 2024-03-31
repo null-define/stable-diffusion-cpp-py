@@ -1,0 +1,6 @@
+[submodule "sd_cpp_lib/pybind11"]
+	path = sd_cpp_lib/pybind11
+	url = https://github.com/pybind/pybind11.git
+[submodule "sd_cpp_lib/stable-diffusion.cpp"]
+	path = sd_cpp_lib/stable-diffusion.cpp
+	url = https://github.com/leejet/stable-diffusion.cpp.git
