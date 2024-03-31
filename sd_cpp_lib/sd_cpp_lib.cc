@@ -1,7 +1,49 @@
 #include "magic_enum/magic_enum.hpp"
 #include "pybind11/pybind11.h"
 #include "stable-diffusion.h"
+#include "util.h"
 #include <memory>
+
+static sd_log_level_t g_cfg_log_level = SD_LOG_INFO;
+
+/* Enables Printing the log level tag in color using ANSI escape codes */
+void sd_log_cb(enum sd_log_level_t level, char const* log, void* data) {
+  int tag_color;
+  char const* level_str;
+  FILE* out_stream = (level == SD_LOG_ERROR) ? stderr : stdout;
+
+  if (!log || level < g_cfg_log_level) {
+    return;
+  }
+
+  switch (level) {
+    case SD_LOG_DEBUG:
+      tag_color = 37;
+      level_str = "DEBUG";
+      break;
+    case SD_LOG_INFO:
+      tag_color = 34;
+      level_str = "INFO";
+      break;
+    case SD_LOG_WARN:
+      tag_color = 35;
+      level_str = "WARN";
+      break;
+    case SD_LOG_ERROR:
+      tag_color = 31;
+      level_str = "ERROR";
+      break;
+    default: /* Potential future-proofing */
+      tag_color = 33;
+      level_str = "?????";
+      break;
+  }
+
+  fprintf(out_stream, "[%-5s] ", level_str);
+
+  fputs(log, out_stream);
+  fflush(out_stream);
+}
 
 template <typename T>
 using deleted_unique_ptr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -37,6 +79,9 @@ PYBIND11_MODULE(sd_cpp_lib, m) {
   export_enum<rng_type_t>(m);
   export_enum<schedule_t>(m);
   export_enum<sample_method_t>(m);
+  export_enum<sd_log_level_t>(m);
+  m.def("set_log_level",
+        [](sd_log_level_t log_level) { g_cfg_log_level = log_level; });
   m.def(
       "new_sd_ctx",
       [](std::string const& model_path, std::string const& vae_path,
@@ -47,12 +92,14 @@ PYBIND11_MODULE(sd_cpp_lib, m) {
          sd_type_t wtype, rng_type_t rng_type, schedule_t s,
          bool keep_clip_on_cpu, bool keep_control_net_cpu,
          bool keep_vae_on_cpu) {
-        return static_cast<py::capsule>(new_sd_ctx(
+        sd_set_log_callback(sd_log_cb, nullptr);
+        auto ptr = new_sd_ctx(
             model_path.c_str(), vae_path.c_str(), taesd_path.c_str(),
             control_net_path.c_str(), lora_model_dir.c_str(), embed_dir.c_str(),
             stacked_id_embed_dir.c_str(), vae_decode_only, vae_tiling,
             free_params_immediately, n_threads, wtype, rng_type, s,
-            keep_clip_on_cpu, keep_control_net_cpu, keep_vae_on_cpu));
+            keep_clip_on_cpu, keep_control_net_cpu, keep_vae_on_cpu);
+        return static_cast<py::capsule>(ptr);
       },
       "create stable diffusion context");
   m.def(

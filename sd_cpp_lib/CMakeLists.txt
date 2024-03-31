@@ -17,6 +17,6 @@ add_subdirectory(./stable-diffusion.cpp EXCLUDE_FROM_ALL)
 
 set(TARGET sd_cpp_lib)
 pybind11_add_module(${TARGET} sd_cpp_lib.cc)
-target_link_libraries(${TARGET} PRIVATE stable-diffusion)
+target_link_libraries(${TARGET} PRIVATE stable-diffusion ggml)
 
 

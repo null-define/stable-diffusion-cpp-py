@@ -1,5 +1,12 @@
-import sd_cpp_lib
-from sd_cpp_lib import sd_image_t, sd_type_t, rng_type_t, schedule_t, sample_method_t
+from stable_diffusion_cpp import sd_cpp_lib
+from stable_diffusion_cpp.sd_cpp_lib import (
+    sd_image_t,
+    sd_type_t,
+    rng_type_t,
+    schedule_t,
+    sample_method_t,
+    sd_log_level_t,
+)
 
 
 class StableDiffusion:
@@ -23,8 +30,13 @@ class StableDiffusion:
         keep_control_net_cpu=False,
         keep_vae_on_cpu=False,
         esrgan_path="",
+        log_level=sd_log_level_t.SD_LOG_WARN,
     ) -> None:
-        self.sd_ctx = sdcpy.new_sd_ctx(
+        self.sd_ctx = None
+        self.upscaler_ctx = None
+        sd_cpp_lib.set_log_level(log_level)
+
+        self.sd_ctx = sd_cpp_lib.new_sd_ctx(
             model_path,
             vae_path,
             taesd_path,
@@ -43,12 +55,14 @@ class StableDiffusion:
             keep_control_net_cpu,
             keep_vae_on_cpu,
         )
-        self.upscaler_ctx = None
         if esrgan_path:
-            self.upscaler_ctx = sdcpy.new_upscaler_ctx(esrgan_path, n_threads, wtype)
+            self.upscaler_ctx = sd_cpp_lib.new_upscaler_ctx(
+                esrgan_path, n_threads, wtype
+            )
 
     def __del__(self):
-        sdcpy.free_sd_ctx(self.sd_ctx)
+        if self.sd_ctx:
+            sd_cpp_lib.free_sd_ctx(self.sd_ctx)
 
     def txt_to_img(
         self,
@@ -70,7 +84,7 @@ class StableDiffusion:
     ):
         prompt_str = ",".join(prompt)
         negative_prompt_str = ",".join(negative_prompt)
-        return sdcpy.txt2img(
+        return sd_cpp_lib.txt2img(
             self.sd_ctx,
             prompt_str,
             negative_prompt_str,
@@ -92,4 +106,4 @@ class StableDiffusion:
     def upscale_img(self, img, upscale_factor):
         if not self.upscaler_ctx:
             return img
-        return sdcpy.upscale(self.upscaler_ctx, img, upscale_factor)
+        return sd_cpp_lib.upscale(self.upscaler_ctx, img, upscale_factor)
