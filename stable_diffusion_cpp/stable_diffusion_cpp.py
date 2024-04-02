@@ -6,6 +6,7 @@ from stable_diffusion_cpp.sd_cpp_lib import (
     schedule_t,
     sample_method_t,
     sd_log_level_t,
+    create_img
 )
 
 

@@ -45,8 +45,28 @@ void sd_log_cb(enum sd_log_level_t level, char const* log, void* data) {
   fflush(out_stream);
 }
 
-template <typename T>
-using deleted_unique_ptr = std::unique_ptr<T, std::function<void(T*)>>;
+struct sd_image_wrapper_t {
+  /* data */
+  sd_image_t m_data;
+  sd_image_wrapper_t(sd_image_t const& data) : m_data(data) {}
+  sd_image_wrapper_t(sd_image_wrapper_t const&) = delete;
+  sd_image_wrapper_t(sd_image_wrapper_t&& rhs) {
+    this->m_data = rhs.m_data;
+    rhs.m_data.data = nullptr;
+  }
+  ~sd_image_wrapper_t() {
+    if (m_data.data) {
+      free(m_data.data);
+      m_data.data = nullptr;
+    }
+  }
+};
+
+sd_image_wrapper_t create_img(uint32_t width, uint32_t height, uint32_t channel,
+                              uint8_t* data) {
+  sd_image_t m_data{width, height, channel, data};
+  return sd_image_wrapper_t(m_data);
+}
 
 namespace py = pybind11;
 
@@ -62,18 +82,18 @@ py::enum_<E> export_enum(py::handle const& scope, Extra&&... extra) {
 
 PYBIND11_MODULE(sd_cpp_lib, m) {
   m.doc() = "stable-diffusion.cpp python bind";  // optional module docstring
-  py::class_<sd_image_t>(m, "sd_image_t", py::buffer_protocol())
-      .def_buffer([](sd_image_t& m) -> py::buffer_info {
+  py::class_<sd_image_wrapper_t>(m, "sd_image_t", py::buffer_protocol())
+      .def_buffer([](sd_image_wrapper_t& m_w) -> py::buffer_info {
+        auto& m = m_w.m_data;
         return py::buffer_info(
             m.data,                                   /* Pointer to buffer */
             sizeof(uint8_t),                          /* Size of one scalar */
             py::format_descriptor<uint8_t>::format(), /* Python struct-style
                                                          format descriptor */
             3,                                        /* Number of dimensions */
-            {m.width, m.height, m.channel},           /* Buffer dimensions */
-            {sizeof(uint8_t) * m.channel *
-                 m.height, /* Strides (in bytes) for each index */
-             sizeof(uint8_t) * m.channel, sizeof(uint8_t)});
+            {m.height, m.width, m.channel},           /* Buffer dimensions */
+            {sizeof(uint8_t) * m.channel * m.width, sizeof(uint8_t) * m.channel,
+             sizeof(uint8_t)});
       });
   export_enum<sd_type_t>(m);
   export_enum<rng_type_t>(m);
@@ -82,6 +102,7 @@ PYBIND11_MODULE(sd_cpp_lib, m) {
   export_enum<sd_log_level_t>(m);
   m.def("set_log_level",
         [](sd_log_level_t log_level) { g_cfg_log_level = log_level; });
+  m.def("create_img", &create_img);
   m.def(
       "new_sd_ctx",
       [](std::string const& model_path, std::string const& vae_path,
@@ -107,16 +128,24 @@ PYBIND11_MODULE(sd_cpp_lib, m) {
       [](py::capsule sd_ctx, std::string const& prompt,
          std::string const& negative_prompt, int clip_skip, float cfg_scale,
          int width, int height, sample_method_t sample_method, int sample_steps,
-         int64_t seed, int batch_count, sd_image_t const* control_cond,
+         int64_t seed, int batch_count, sd_image_wrapper_t const* control_cond,
          float control_strength, float style_strength, bool normalize_input,
          std::string const& input_id_images_path) {
-        return deleted_unique_ptr<sd_image_t>(
-            txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
-                    negative_prompt.c_str(), clip_skip, cfg_scale, width,
-                    height, sample_method, sample_steps, seed, batch_count,
-                    control_cond, control_strength, style_strength,
-                    normalize_input, input_id_images_path.c_str()),
-            [](sd_image_t* p) { free(p->data); });
+        if (control_cond) {
+          return sd_image_wrapper_t(
+              *(txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
+                        negative_prompt.c_str(), clip_skip, cfg_scale, width,
+                        height, sample_method, sample_steps, seed, batch_count,
+                        &control_cond->m_data, control_strength, style_strength,
+                        normalize_input, input_id_images_path.c_str())));
+        }
+
+        return sd_image_wrapper_t(
+            *(txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
+                      negative_prompt.c_str(), clip_skip, cfg_scale, width,
+                      height, sample_method, sample_steps, seed, batch_count,
+                      nullptr, control_strength, style_strength,
+                      normalize_input, input_id_images_path.c_str())));
       },
       "text 2 image");
   m.def(
@@ -132,12 +161,11 @@ PYBIND11_MODULE(sd_cpp_lib, m) {
       "create upscaler context");
   m.def(
       "upscale",
-      [](py::capsule upscaler_ctx, sd_image_t input_image,
+      [](py::capsule upscaler_ctx, sd_image_wrapper_t const& input_image,
          uint32_t upscale_factor) {
-        return deleted_unique_ptr<sd_image_t>(
-            new sd_image_t(upscale(static_cast<upscaler_ctx_t*>(upscaler_ctx),
-                                   input_image, upscale_factor)),
-            [](sd_image_t* p) { free(p->data); });
+        return sd_image_wrapper_t(
+            upscale(static_cast<upscaler_ctx_t*>(upscaler_ctx),
+                    input_image.m_data, upscale_factor));
       },
       "upscale using upscaler context");
   m.def(
