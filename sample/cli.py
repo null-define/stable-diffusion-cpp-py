@@ -62,6 +62,6 @@ sd = StableDiffusion(
 import random
 
 img = sd.txt_to_img(prompt=good_words + prompt_words, negative_prompt=neg_words, width= 1024, height=704, seed=random.randint(-32768, 65536))
-img2 = sd.upscale_img(img, 4)
+img2 = sd.upscale_img(img[0], 4)
 im = Image.fromarray(np.array(img2))
 im.save("img.png", bitmap_format = 'png', optimize= False, subsampling=0, quality=100)

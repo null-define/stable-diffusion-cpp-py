@@ -1,5 +1,6 @@
 #include "magic_enum/magic_enum.hpp"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "stable-diffusion.h"
 #include "util.h"
 #include <memory>
@@ -47,25 +48,32 @@ void sd_log_cb(enum sd_log_level_t level, char const* log, void* data) {
 
 struct sd_image_wrapper_t {
   /* data */
-  sd_image_t m_data;
-  sd_image_wrapper_t(sd_image_t const& data) : m_data(data) {}
+  sd_image_wrapper_t(sd_image_t const& data, bool is_view = false)
+      : m_data(data), m_is_view(is_view) {
+  }
   sd_image_wrapper_t(sd_image_wrapper_t const&) = delete;
   sd_image_wrapper_t(sd_image_wrapper_t&& rhs) {
     this->m_data = rhs.m_data;
+    this->m_is_view = rhs.m_is_view;
     rhs.m_data.data = nullptr;
   }
   ~sd_image_wrapper_t() {
-    if (m_data.data) {
+    if (!m_is_view && m_data.data) {
       free(m_data.data);
       m_data.data = nullptr;
+    } else {
     }
   }
+
+ public:
+  sd_image_t m_data;
+  bool m_is_view;
 };
 
 sd_image_wrapper_t create_img(uint32_t width, uint32_t height, uint32_t channel,
-                              uint8_t* data) {
+                              uint8_t* data, bool is_view) {
   sd_image_t m_data{width, height, channel, data};
-  return sd_image_wrapper_t(m_data);
+  return sd_image_wrapper_t(m_data, is_view);
 }
 
 namespace py = pybind11;
@@ -131,21 +139,28 @@ PYBIND11_MODULE(sd_cpp_lib, m) {
          int64_t seed, int batch_count, sd_image_wrapper_t const* control_cond,
          float control_strength, float style_strength, bool normalize_input,
          std::string const& input_id_images_path) {
+        std::vector<sd_image_wrapper_t> ret;
+        sd_image_t* ret_tmp = nullptr;
         if (control_cond) {
-          return sd_image_wrapper_t(
-              *(txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
-                        negative_prompt.c_str(), clip_skip, cfg_scale, width,
-                        height, sample_method, sample_steps, seed, batch_count,
-                        &control_cond->m_data, control_strength, style_strength,
-                        normalize_input, input_id_images_path.c_str())));
-        }
-
-        return sd_image_wrapper_t(
-            *(txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
+          ret_tmp =
+              txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
+                      negative_prompt.c_str(), clip_skip, cfg_scale, width,
+                      height, sample_method, sample_steps, seed, batch_count,
+                      &control_cond->m_data, control_strength, style_strength,
+                      normalize_input, input_id_images_path.c_str());
+        } else {
+          ret_tmp =
+              txt2img(static_cast<sd_ctx_t*>(sd_ctx), prompt.c_str(),
                       negative_prompt.c_str(), clip_skip, cfg_scale, width,
                       height, sample_method, sample_steps, seed, batch_count,
                       nullptr, control_strength, style_strength,
-                      normalize_input, input_id_images_path.c_str())));
+                      normalize_input, input_id_images_path.c_str());
+        }
+        for (auto i = 0; i < batch_count; i++) {
+          ret.push_back(ret_tmp[i]);
+        }
+        free(ret_tmp);
+        return ret;
       },
       "text 2 image");
   m.def(

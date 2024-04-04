@@ -1,3 +1,5 @@
+from typing import Callable, List
+
 from stable_diffusion_cpp import sd_cpp_lib
 from stable_diffusion_cpp.sd_cpp_lib import (
     sd_image_t,
@@ -6,8 +8,12 @@ from stable_diffusion_cpp.sd_cpp_lib import (
     schedule_t,
     sample_method_t,
     sd_log_level_t,
-    create_img
+    create_img,
 )
+
+
+def create_img_view(width, height, channel, data):
+    create_img(width, height, channel, data, True)
 
 
 class StableDiffusion:
@@ -82,7 +88,7 @@ class StableDiffusion:
         style_strength=20.0,
         normalize_input=False,
         input_id_images_path="",
-    ):
+    ) -> List[sd_image_t]:
         prompt_str = ",".join(prompt)
         negative_prompt_str = ",".join(negative_prompt)
         return sd_cpp_lib.txt2img(
